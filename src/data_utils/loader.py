@@ -19,8 +19,40 @@ CHINESE_TO_ENGLISH = {
     "成交量(股)": "volume",
     "涨跌额": "price_change",
     "涨跌幅(%)": "pct_change",
-    }
+}
 
+COMMON_CSV_ENCODINGS = ("utf-8", "utf-8-sig", "gbk", "gb18030", "big5")
+
+
+def read_csv_with_fallback_encodings(csv_path: Path) -> pd.DataFrame:
+    """Read CSV with common UTF/Chinese encodings.
+
+    Raises:
+        UnicodeDecodeError: If no encoding can decode the file.
+    """
+    last_error: UnicodeDecodeError | None = None
+
+    for encoding in COMMON_CSV_ENCODINGS:
+        try:
+            return pd.read_csv(csv_path, encoding=encoding)
+        except UnicodeDecodeError as err:
+            last_error = err
+
+    if last_error is None:
+        # Defensive fallback for non-decoding errors.
+        return pd.read_csv(csv_path)
+
+    raise UnicodeDecodeError(
+        last_error.encoding,
+        last_error.object,
+        last_error.start,
+        last_error.end,
+        (
+            f"Unable to decode {csv_path} with tried encodings: "
+            f"{', '.join(COMMON_CSV_ENCODINGS)}. "
+            f"Original error: {last_error.reason}"
+        ),
+    )
 
 
 def load_daily_csv(
@@ -29,7 +61,7 @@ def load_daily_csv(
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """Load one daily CSV file and return cleaned data with log returns."""
-    raw_df = pd.read_csv(csv_path)
+    raw_df = read_csv_with_fallback_encodings(csv_path)
     return preprocess_daily_prices(
         raw_df,
         rename_map=CHINESE_TO_ENGLISH,
